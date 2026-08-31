@@ -60,3 +60,10 @@ __global__ void gemm_tiled_kernel(const float* A, const float* B, float* C,
         C[C_row_idx * N + C_col_idx] = value;
     }
 }
+
+void launchGemmTiled(const float* d_A, const float* d_B, float* d_C,
+                      int M, int N, int K, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid(cuda::ceil_div(N, static_cast<int>(block.x)), cuda::ceil_div(M, static_cast<int>(block.y)));
+    gemm_tiled_kernel<16, 32><<<grid, block, 0, stream>>>(d_A, d_B, d_C, M, N, K);
+}

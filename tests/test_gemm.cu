@@ -31,17 +31,19 @@ int main(int argc, char** argv) {
     printf("GEMM: M=%d, N=%d, K=%d\n\n", M, N, K);
 
     // ---------- Host-side setup ----------
-    std::vector<float> h_A, h_B, h_C_naive, h_C_cublas;
+    std::vector<float> h_A, h_B, h_C_naive, h_C_tiled, h_C_cublas;
     matrixRandomInit(h_A, M, K);
     matrixRandomInit(h_B, K, N, -1.0f, 1.0f, /*seed=*/123);
     matrixZeroInit(h_C_naive, M, N);
+    matrixZeroInit(h_C_tiled, M, N);
     matrixZeroInit(h_C_cublas, M, N);
 
     // ---------- Device allocation ----------
-    float *d_A, *d_B, *d_C_naive, *d_C_cublas;
+    float *d_A, *d_B, *d_C_naive, *d_C_tiled, *d_C_cublas;
     CUDA_CHECK(cudaMalloc(&d_A, sizeof(float) * M * K));
     CUDA_CHECK(cudaMalloc(&d_B, sizeof(float) * K * N));
     CUDA_CHECK(cudaMalloc(&d_C_naive, sizeof(float) * M * N));
+    CUDA_CHECK(cudaMalloc(&d_C_tiled, sizeof(float) * M * N));
     CUDA_CHECK(cudaMalloc(&d_C_cublas, sizeof(float) * M * N));
 
     CUDA_CHECK(cudaMemcpy(d_A, h_A.data(), sizeof(float) * M * K, cudaMemcpyHostToDevice));
@@ -56,17 +58,26 @@ int main(int argc, char** argv) {
     CUDA_CHECK_LAST();
     CUDA_CHECK(cudaDeviceSynchronize());
 
+    launchGemmTiled(d_A, d_B, d_C_tiled, M, N, K);
+    CUDA_CHECK_LAST();
+    CUDA_CHECK(cudaDeviceSynchronize());
+
     cublasGemmRowMajor(handle, d_A, d_B, d_C_cublas, M, N, K);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     CUDA_CHECK(cudaMemcpy(h_C_naive.data(), d_C_naive, sizeof(float) * M * N, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_C_tiled.data(), d_C_tiled, sizeof(float) * M * N, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_C_cublas.data(), d_C_cublas, sizeof(float) * M * N, cudaMemcpyDeviceToHost));
 
-    auto cmp = matrixCompare(h_C_naive, h_C_cublas, M, N);
-    matrixCompareReport(cmp, "Naive vs cuBLAS");
+    auto cmp_naive = matrixCompare(h_C_naive, h_C_cublas, M, N);
+    matrixCompareReport(cmp_naive, "Naive vs cuBLAS");
+
+    auto cmp_tiled = matrixCompare(h_C_tiled, h_C_cublas, M, N);
+    matrixCompareReport(cmp_tiled, "Tiled vs cuBLAS");
 
     if (M <= 8 && N <= 8) {  // only dump small matrices
         matrixPrint(h_C_naive, M, N, "C_naive");
+        matrixPrint(h_C_tiled, M, N, "C_tiled");
         matrixPrint(h_C_cublas, M, N, "C_cublas");
     }
 
@@ -77,25 +88,34 @@ int main(int argc, char** argv) {
         launchGemmNaive(d_A, d_B, d_C_naive, M, N, K);
     });
 
+    float ms_tiled = timeKernel(num_iters, [&]() {
+        launchGemmTiled(d_A, d_B, d_C_tiled, M, N, K);
+    });
+
     float ms_cublas = timeKernel(num_iters, [&]() {
         cublasGemmRowMajor(handle, d_A, d_B, d_C_cublas, M, N, K);
     });
 
     double gflops_naive = gemmGFLOPS(M, N, K, ms_naive);
+    double gflops_tiled = gemmGFLOPS(M, N, K, ms_tiled);
     double gflops_cublas = gemmGFLOPS(M, N, K, ms_cublas);
 
     printf("\n--- Performance ---\n");
     printf("Naive:  %8.4f ms  |  %8.2f GFLOPS\n", ms_naive, gflops_naive);
+    printf("Tiled:  %8.4f ms  |  %8.2f GFLOPS\n", ms_tiled, gflops_tiled);
     printf("cuBLAS: %8.4f ms  |  %8.2f GFLOPS\n", ms_cublas, gflops_cublas);
     printf("Naive achieves %.2f%% of cuBLAS performance\n",
            100.0 * gflops_naive / gflops_cublas);
+    printf("Tiled achieves %.2f%% of cuBLAS performance\n",
+           100.0 * gflops_tiled / gflops_cublas);
 
     // ---------- Cleanup ----------
     cublasDestroy(handle);
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C_naive);
+    cudaFree(d_C_tiled);
     cudaFree(d_C_cublas);
 
-    return cmp.passed ? 0 : 1;
+    return cmp_naive.passed && cmp_tiled.passed ? 0 : 1;
 }
