@@ -1,4 +1,22 @@
+# Virtual environment
+.venv/
+
+# Compiled extension module
+*.so
+
+# Python build artifacts
 build/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# CUDA/C++ compiled objects (in case of stray local builds)
 *.o
-*.out
+*.obj
+
+# pip build temp dirs (usually in /tmp, but just in case)
+*.egg
+
+# Editor/OS cruft
 .vscode/
+.DS_Store
