@@ -9,6 +9,7 @@ build/
 *.egg-info/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # CUDA/C++ compiled objects (in case of stray local builds)
 *.o

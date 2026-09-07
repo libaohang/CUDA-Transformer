@@ -6,3 +6,8 @@ def test_softmax_naive():
     out = tk.softmax_naive(x)
     ref = torch.softmax(x, dim=-1)
     torch.testing.assert_close(out, ref, atol=1e-5, rtol=1e-5)
+
+
+if __name__ == "__main__":
+    test_softmax_naive()
+    print("softmax_naive test passed!")

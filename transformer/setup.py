@@ -9,6 +9,7 @@ setup(
             sources=[
                 "bindings/bindings.cpp",
                 "src/softmax/softmax_naive.cu",
+                "src/layernorm/layernorm_naive.cu",
             ],
             include_dirs=["include"],
             extra_compile_args={
