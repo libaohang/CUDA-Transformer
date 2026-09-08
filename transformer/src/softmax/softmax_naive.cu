@@ -54,3 +54,44 @@ void launchSoftmaxNaive(const float* Z, float* out, int rows, int cols, cudaStre
     size_t smem = threads * sizeof(float);
     softmax_naive_kernel<<<grid, block, smem, stream>>>(Z, out, rows, cols);
 }
+
+__global__ void softmax_backward_kernel(const float* __restrict__ grad_out,
+                                         const float* __restrict__ y,
+                                         float* __restrict__ grad_in,
+                                         int rows, int cols) {
+    extern __shared__ float sdata[];
+    int row = blockIdx.x;
+    if (row >= rows) return;
+
+    const float* dy_row = grad_out + row * cols;
+    const float* y_row  = y        + row * cols;
+    float*       dx_row = grad_in  + row * cols;
+
+    // Reduction: dot = sum_j(dL/dy_j * y_j)
+    float local_dot = 0.0f;
+    for (int i = threadIdx.x; i < cols; i += blockDim.x)
+        local_dot += dy_row[i] * y_row[i];
+
+    sdata[threadIdx.x] = local_dot;
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (threadIdx.x < s)
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        __syncthreads();
+    }
+    float dot = sdata[0];
+    __syncthreads();
+
+    // Elementwise: dL/dx_i = y_i * (dL/dy_i - dot)
+    for (int i = threadIdx.x; i < cols; i += blockDim.x)
+        dx_row[i] = y_row[i] * (dy_row[i] - dot);
+}
+
+void launchSoftmaxBackward(const float* grad_out, const float* y, float* grad_in,
+                            int rows, int cols, cudaStream_t stream) {
+    int threads = 256;
+    dim3 block(threads);
+    dim3 grid(rows);
+    size_t smem = threads * sizeof(float);
+    softmax_backward_kernel<<<grid, block, smem, stream>>>(grad_out, y, grad_in, rows, cols);
+}

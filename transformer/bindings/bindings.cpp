@@ -29,6 +29,28 @@ torch::Tensor softmax_naive(torch::Tensor input) {
     return out;
 }
 
+void launchSoftmaxBackward(const float* grad_out, const float* y, float* grad_in,
+                            int rows, int cols, cudaStream_t stream);
+
+torch::Tensor softmax_backward(torch::Tensor grad_output, torch::Tensor y) {
+    TORCH_CHECK(grad_output.is_cuda() && y.is_cuda(), "inputs must be CUDA tensors");
+    TORCH_CHECK(grad_output.sizes() == y.sizes(), "shape mismatch");
+    TORCH_CHECK(grad_output.is_contiguous() && y.is_contiguous(), "inputs must be contiguous");
+
+    int rows = y.size(0);
+    int cols = y.size(1);
+    auto grad_input = torch::empty_like(y);
+
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    launchSoftmaxBackward(
+        grad_output.data_ptr<float>(),
+        y.data_ptr<float>(),
+        grad_input.data_ptr<float>(),
+        rows, cols, stream
+    );
+    return grad_input;
+}
+
 void launchLayernormNaive(const float* X, const float* gamma, const float* beta,
                            float* out, float* mean_out, float* rstd_out, int rows,
                            int cols, float eps, cudaStream_t stream);
@@ -73,6 +95,7 @@ std::vector<torch::Tensor> layernorm_naive(torch::Tensor input,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("softmax_naive", &softmax_naive, "Naive row-wise softmax (CUDA)");
+    m.def("softmax_backward", &softmax_backward, "Softmax backprop (CUDA)");
     m.def("layernorm_naive", &layernorm_naive, "Naive row-wise layernorm (CUDA)",
           py::arg("input"), py::arg("gamma"), py::arg("beta"), py::arg("eps") = 1e-5);
 }
