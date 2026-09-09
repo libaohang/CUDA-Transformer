@@ -2,8 +2,8 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <cuda_runtime.h>
 
-// Forward-declare the launcher defined in src/softmax/softmax_naive.cu
-void launchSoftmaxNaive(const float* Z, float* out, int rows, int cols, cudaStream_t stream);
+#include "../include/softmax.cuh"
+#include "../include/layernorm.cuh"
 
 torch::Tensor softmax_naive(torch::Tensor input) {
     // --- Validation ---
@@ -29,9 +29,6 @@ torch::Tensor softmax_naive(torch::Tensor input) {
     return out;
 }
 
-void launchSoftmaxBackward(const float* grad_out, const float* y, float* grad_in,
-                            int rows, int cols, cudaStream_t stream);
-
 torch::Tensor softmax_backward(torch::Tensor grad_output, torch::Tensor y) {
     TORCH_CHECK(grad_output.is_cuda() && y.is_cuda(), "inputs must be CUDA tensors");
     TORCH_CHECK(grad_output.sizes() == y.sizes(), "shape mismatch");
@@ -50,10 +47,6 @@ torch::Tensor softmax_backward(torch::Tensor grad_output, torch::Tensor y) {
     );
     return grad_input;
 }
-
-void launchLayernormNaive(const float* X, const float* gamma, const float* beta,
-                           float* out, float* mean_out, float* rstd_out, int rows,
-                           int cols, float eps, cudaStream_t stream);
 
 std::vector<torch::Tensor> layernorm_naive(torch::Tensor input,
                                             torch::Tensor gamma,
@@ -92,11 +85,6 @@ std::vector<torch::Tensor> layernorm_naive(torch::Tensor input,
 
     return {out, mean_out, rstd_out};
 }
-
-void launchLayernormBackward(const float* grad_out, const float* in, const float* gamma,
-                              const float* mean_out, const float* rstd_out,
-                              float* grad_in, float* grad_gamma, float* grad_beta,
-                              int rows, int cols, cudaStream_t stream);
 
 std::vector<torch::Tensor> layernorm_backward(torch::Tensor grad_output,
                                                torch::Tensor input,

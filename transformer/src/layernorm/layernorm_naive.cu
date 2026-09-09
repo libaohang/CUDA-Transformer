@@ -1,4 +1,5 @@
 #include "../../include/layernorm.cuh"
+#include "../../common/cuda_utils.cuh"
 #include <cmath>
 
 __global__ void layernorm_naive_kernel(const float* __restrict__ X,
@@ -134,4 +135,5 @@ void launchLayernormBackward(const float* grad_out, const float* in, const float
         grad_out, in, gamma, mean_out, rstd_out,
         grad_in, grad_gamma, grad_beta, rows, cols
     );
+    CUDA_CHECK_LAST();
 }

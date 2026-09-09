@@ -1,4 +1,5 @@
 #include "../../include/softmax.cuh"
+#include "../../common/cuda_utils.cuh"
 #include <cfloat>
 
 // One block per row. blockDim.x threads cooperate on that row.
@@ -94,4 +95,5 @@ void launchSoftmaxBackward(const float* grad_out, const float* y, float* grad_in
     dim3 grid(rows);
     size_t smem = threads * sizeof(float);
     softmax_backward_kernel<<<grid, block, smem, stream>>>(grad_out, y, grad_in, rows, cols);
+    CUDA_CHECK_LAST();
 }
